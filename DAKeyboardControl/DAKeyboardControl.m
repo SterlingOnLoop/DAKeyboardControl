@@ -4,6 +4,8 @@
 //
 //  Created by Daniel Amitay on 7/14/12.
 //  Copyright (c) 2012 Daniel Amitay. All rights reserved.
+//  Forked on GitHub (with permission according to Daniel Amitay's MIT License) 2015
+//  Modified by Sterling Christensen 2015
 //
 
 #import "DAKeyboardControl.h"
@@ -12,7 +14,7 @@
 
 static inline UIViewAnimationOptions AnimationOptionsForCurve(UIViewAnimationCurve curve)
 {
-	return curve << 16;
+    return curve << 16;
 }
 
 static char UIViewKeyboardTriggerOffset;
@@ -24,6 +26,8 @@ static char UIViewKeyboardPanRecognizer;
 static char UIViewPreviousKeyboardRect;
 static char UIViewIsPanning;
 static char UIViewKeyboardOpened;
+
+static NSString *UIViewKeyboardObservingKey;
 
 @interface UIView (DAKeyboardControl_Internal) <UIGestureRecognizerDelegate>
 
@@ -42,21 +46,27 @@ static char UIViewKeyboardOpened;
 
 + (void)load
 {
-    // Swizzle the 'addSubview:' method to ensure that all input fields
-    // have a valid inputAccessoryView upon addition to the view heirarchy
-    SEL originalSelector = @selector(addSubview:);
-    SEL swizzledSelector = @selector(swizzled_addSubview:);
-    Method originalMethod = class_getInstanceMethod(self, originalSelector);
-    Method swizzledMethod = class_getInstanceMethod(self, swizzledSelector);
-    class_addMethod(self,
+    /*
+     ASC: commenting this out to fix a crash on iOS 8 with UISearchBar as inputAccessoryView.
+     
+     // Swizzle the 'addSubview:' method to ensure that all input fields
+     // have a valid inputAccessoryView upon addition to the view heirarchy
+     SEL originalSelector = @selector(addSubview:);
+     SEL swizzledSelector = @selector(swizzled_addSubview:);
+     Method originalMethod = class_getInstanceMethod(self, originalSelector);
+     Method swizzledMethod = class_getInstanceMethod(self, swizzledSelector);
+     class_addMethod(self,
 					originalSelector,
 					class_getMethodImplementation(self, originalSelector),
 					method_getTypeEncoding(originalMethod));
-	class_addMethod(self,
+     class_addMethod(self,
 					swizzledSelector,
 					class_getMethodImplementation(self, swizzledSelector),
 					method_getTypeEncoding(swizzledMethod));
-    method_exchangeImplementations(originalMethod, swizzledMethod);
+     method_exchangeImplementations(originalMethod, swizzledMethod);
+     */
+    
+    UIViewKeyboardObservingKey = SYSTEM_VERSION_LESS_THAN(@"8") ? @"frame" : @"center";
 }
 
 #pragma mark - Public Methods
@@ -372,9 +382,9 @@ static char UIViewKeyboardOpened;
                         change:(__unused NSDictionary *)change
                        context:(__unused void *)context
 {
-    if([keyPath isEqualToString:@"frame"] && object == self.keyboardActiveView)
+    if([keyPath isEqualToString:UIViewKeyboardObservingKey] && object == self.keyboardActiveView)
     {
-        CGRect keyboardEndFrameWindow = [[object valueForKeyPath:keyPath] CGRectValue];
+        CGRect keyboardEndFrameWindow = self.keyboardActiveView.frame;
         CGRect keyboardEndFrameView = [self convertRect:keyboardEndFrameWindow fromView:self.keyboardActiveView.window];
         
         if (CGRectEqualToRect(keyboardEndFrameView, self.previousKeyboardRect)) return;
@@ -550,32 +560,43 @@ static char UIViewKeyboardOpened;
     return found;
 }
 
-- (void)swizzled_addSubview:(UIView *)subview
-{
-    if (!subview.inputAccessoryView)
-    {
-        if ([subview isKindOfClass:[UITextField class]])
-        {
-            UITextField *textField = (UITextField *)subview;
-            if ([textField respondsToSelector:@selector(setInputAccessoryView:)])
-            {
-                UIView *nullView = [[UIView alloc] initWithFrame:CGRectZero];
-                nullView.backgroundColor = [UIColor clearColor];
-                textField.inputAccessoryView = nullView;
-            }
-        }
-        else if ([subview isKindOfClass:[UITextView class]]) {
-            UITextView *textView = (UITextView *)subview;
-            if ([textView respondsToSelector:@selector(setInputAccessoryView:)] && [textView respondsToSelector:@selector(isEditable)] && textView.isEditable)
-            {
-                UIView *nullView = [[UIView alloc] initWithFrame:CGRectZero];
-                nullView.backgroundColor = [UIColor clearColor];
-                textView.inputAccessoryView = nullView;
-            }
-        }
-    }
-    [self swizzled_addSubview:subview];
-}
+/*
+ - (void)swizzled_addSubview:(UIView *)subview
+ {
+ if (!subview.inputAccessoryView)
+ {
+ if ([subview isKindOfClass:[UITextField class]])
+ {
+ UITextField *textField = (UITextField *)subview;
+ if ([textField respondsToSelector:@selector(setInputAccessoryView:)])
+ {
+ UIView *nullView = [[UIView alloc] initWithFrame:CGRectZero];
+ nullView.backgroundColor = [UIColor clearColor];
+ textField.inputAccessoryView = nullView;
+ }
+ }
+ else if ([subview isKindOfClass:[UITextView class]]) {
+ UITextView *textView = (UITextView *)subview;
+ if ([textView respondsToSelector:@selector(setInputAccessoryView:)] && [textView respondsToSelector:@selector(isEditable)] && textView.isEditable)
+ {
+ UIView *nullView = [[UIView alloc] initWithFrame:CGRectZero];
+ nullView.backgroundColor = [UIColor clearColor];
+ textView.inputAccessoryView = nullView;
+ }
+ }
+ else if ([subview isKindOfClass:[UISearchBar class]]) {
+ UISearchBar *searchBar = (UISearchBar *)subview;
+ if ([searchBar respondsToSelector:@selector(setInputAccessoryView:)])
+ {
+ UIView *nullView = [[UIView alloc] initWithFrame:CGRectZero];
+ nullView.backgroundColor = [UIColor clearColor];
+ searchBar.inputAccessoryView = nullView;
+ }
+ }
+ }
+ [self swizzled_addSubview:subview];
+ }
+ */
 
 #pragma mark - Property Methods
 
@@ -688,11 +709,11 @@ static char UIViewKeyboardOpened;
 {
     [self willChangeValueForKey:@"keyboardActiveView"];
     [self.keyboardActiveView removeObserver:self
-                                 forKeyPath:@"frame"];
+                                 forKeyPath:UIViewKeyboardObservingKey];
     if (keyboardActiveView)
     {
         [keyboardActiveView addObserver:self
-                             forKeyPath:@"frame"
+                             forKeyPath:UIViewKeyboardObservingKey
                                 options:0
                                 context:NULL];
     }
